@@ -11,12 +11,17 @@
 
 #endif
 
-#define NOASSOC 0 
-#define LEFT_ASSOC 1
-#define RIGHT_ASSOC 2
-
 namespace parser {
-
+    enum ASSOCIATIVITY {
+        NOASSOC,
+        LEFT_ASSOC,
+        RIGHT_ASSOC
+    };
+    enum ACTION_TYPE {
+        REDUCE,
+        SHIFT,
+        INVALID_ACTION,
+    };
 #ifndef DONT_DEFINE_PARSER_DEFAULT
 
     struct default_parser_params {
@@ -32,6 +37,10 @@ namespace parser {
                     {
                         resize(size() - n);
                     }
+                    size_t size() const
+                    {
+                        return vector::size();
+                    }
                 };
             };
     };
@@ -46,12 +55,9 @@ namespace parser {
             template <typename T>
                 struct types : PARSER_PARAMS::template types<T>{};
             typedef uint ASSOCIATIVITY;
-            enum ACTION_TYPE {
-                REDUCE,
-                SHIFT,
-                INVALID_ACTION,
-            };
+            typedef uint ACTION_TYPE;
             struct rule : PARSER_PARAMS::template types<symbol>::vector {
+                typedef typename PARSER_PARAMS::template types<symbol>::vector vector;
                 symbol left_hand;
                 int precedence;
                 ASSOCIATIVITY associativity;
@@ -191,6 +197,18 @@ namespace parser {
 
             struct item_set : PARSER_PARAMS::template types<item>::set
             {
+                typedef typename PARSER_PARAMS::template types<item>::set set;
+                typedef typename set::const_iterator const_iterator;
+
+                const_iterator begin() const
+                {
+                    return set::begin();
+                }
+                const_iterator end() const
+                {
+                    return set::end();
+                }
+
                 item_set()
                 {}
                 template <typename ITERATOR_TYPE>
@@ -227,27 +245,29 @@ namespace parser {
                         if (result.get_precedence() < new_action.get_precedence()) {
                             goto update;
                         }
-                        ASSOCIATIVITY old_assoc = result.get_associativity(),
-                                      new_assoc = new_action.get_associativity();
-                        if (old_assoc != new_assoc) {
-                            message = "conflict: actions with same precedence with different associativity";
-                            goto conflict;
+                        {
+                            ASSOCIATIVITY old_assoc = result.get_associativity(),
+                                          new_assoc = new_action.get_associativity();
+                            if (old_assoc != new_assoc) {
+                                message = "conflict: actions with same precedence with different associativity";
+                                goto conflict;
+                            }
+                            if (old_assoc == NOASSOC) {
+                                message = "conflict: actions with no associativity require it";
+                                goto conflict;
+                            }
+                            ACTION_TYPE old_action_type = result.get_type(),
+                                        new_action_type = new_action.get_type();
+                            if (old_action_type == REDUCE && new_action_type == REDUCE) {
+                                message = "reduce/reduce conflict";
+                                goto conflict;
+                            }
+                            if (old_assoc == LEFT_ASSOC && new_action_type == REDUCE)
+                                goto update;
+                            if (old_assoc == RIGHT_ASSOC && new_action_type == SHIFT)
+                                goto update;
+                            return;
                         }
-                        if (old_assoc == NOASSOC) {
-                            message = "conflict: actions with no associativity require it";
-                            goto conflict;
-                        }
-                        ACTION_TYPE old_action_type = result.get_type(),
-                                    new_action_type = new_action.get_type();
-                        if (old_action_type == REDUCE && new_action_type == REDUCE) {
-                            message = "reduce/reduce conflict";
-                            goto conflict;
-                        }
-                        if (old_assoc == LEFT_ASSOC && new_action_type == REDUCE)
-                            goto update;
-                        if (old_assoc == RIGHT_ASSOC && new_action_type == SHIFT)
-                            goto update;
-                        return;
 update:
                         result = new_action;
                         return;
@@ -314,8 +334,27 @@ conflict:
         typedef typename PARSER_IMPL::rule_iterator rule_iterator;
         typedef typename PARSER_IMPL::symbol_iterator symbol_iterator;   
         typedef typename PARSER_IMPL::item_set_list item_set_list;
+        typedef typename PARSER_IMPL::action action;
         template <typename T>
             struct types : PARSER_IMPL::template types<T>{};
+
+        rule_iterator begin_rules() const
+        {
+            return PARSER_IMPL::begin_rules();
+        }
+        rule_iterator end_rules() const
+        {
+            return PARSER_IMPL::end_rules();
+        }
+        symbol_iterator begin_symbols() const
+        {
+            return PARSER_IMPL::begin_symbols();
+        }
+        symbol_iterator end_symbols() const
+        {
+            return PARSER_IMPL::end_symbols();
+        }
+
 
         template <typename TOKEN_TYPE> 
             struct context
@@ -379,7 +418,7 @@ conflict:
         item_set next(const item_set& old_set, const symbol& symbol) const
         {
             item_set pre_rez;
-            for(item_set::const_iterator it = old_set.begin();
+            for(typename item_set::const_iterator it = old_set.begin();
                     it != old_set.end();
                     ++it)
                 if (it->can_progress(symbol))
@@ -390,7 +429,7 @@ conflict:
         {
             item_set rez(set.begin(), set.end());
 
-            for (item_set::const_iterator original_set_element = set.begin();
+            for (typename item_set::const_iterator original_set_element = set.begin();
                     original_set_element != set.end();
                     ++original_set_element) {
                 if (original_set_element->at_end())
@@ -430,7 +469,7 @@ conflict:
                         next_symbol != end_symbols();
                         ++next_symbol) {
                     item_set new_state;
-                    for (item_set::iterator item_to_try = graph[i].begin();
+                    for (typename item_set::iterator item_to_try = graph[i].begin();
                             item_to_try != graph[i].end();
                             ++item_to_try) {
                         if (item_to_try->can_progress(*next_symbol))
