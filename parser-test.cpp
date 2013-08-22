@@ -10,6 +10,9 @@ s -> t
 s -> s + t
 #endif 
 
+typedef parser::default_parser::symbol symbol;
+typedef parser::default_parser::rule rule;
+typedef parser::default_parser::item_set item_set;
 
 void print (const parser::default_parser::rule &rule)
 {
@@ -34,12 +37,10 @@ void print(const parser::default_parser::item &item)
 void print(const parser::default_parser::item_set &item_set)
 {
     puts("<item-set>");
-    for (auto it = item_set.begin(); it != item_set.end(); ++it)
+    for (item_set::const_iterator it = item_set.begin(); it != item_set.end(); ++it)
         print(*it);
     puts("</item-set>");
 }
-typedef parser::default_parser::symbol symbol;
-typedef parser::default_parser::rule rule;
 
 struct token
 {
@@ -62,13 +63,12 @@ struct token
             print(r);
         }
 };
-
 struct srule
 {
     unsigned int left_hand;
     const char * right_hand;
     int precedence;
-    int assoc;
+    parser::ASSOCIATIVITY assoc;
     rule get_rule()
     {
         int sz;
@@ -83,11 +83,11 @@ int main()
         parser::default_parser p;
         unsigned int symbols[] = {'i', '+', 's', 'e', '*', '$', '(', ')'};
         srule rules[] = {
-            {'s', "e$", 0, 0},
-            {'e', "e+e", 1, 1},
-            {'e', "e*e", 2, 1},
-            {'e', "(e)", 3, 0},
-            {'e', "i", 2, 0}};
+            {'s', "e$", 0, parser::NOASSOC},
+            {'e', "e+e", 1, parser::LEFT_ASSOC},
+            {'e', "e*e", 2, parser::LEFT_ASSOC},
+            {'e', "(e)", 3, parser::NOASSOC},
+            {'e', "i", 2, parser::NOASSOC}};
         const char *input = "i+i*(i+i)*i+i";
         p.symbols.assign(symbols, symbols + 9);
         for (int i = 0; i < 5; ++i) {
